@@ -128,19 +128,25 @@ traceroute=tracert -d www.example.org
 network_trafic=netstat -n
 
 ; Take screen shot?
-; [M,L,W] yes or no
-screenshot=yes
+; [M,L,W] yes, stolen or (blank) to disable
+; - yes: screenshot will always be included when sending the report
+; - stolen: screenshot will be included in the report only when the computer is stolen
+; - (blank): screenshot will never be taken
+screenshot=stolen
 
 ; Take webcam shot?
 ; <filepath> will be replaced by a filename, do not customize (required).
-; [W] yes or (blank to disable)
+; [W] yes, stolen or (blank) to disable
+; [W] - yes: camshot will always be included when sending the report
+; [W] - stolen: camshot will be included in the report only when the computer is stolen
+; [W] - (blank): camshot will never be taken
 ; [L] /usr/bin/streamer -q -t 1 -r 2 -o  <filepath>
 ; [L] /usr/bin/streamer -q -t 1 -r 2 -j 100 -s 640x480 -o <filepath>
 ; [L] /usr/bin/streamer -q -w 3 -o <filepath>
 ; [L] /usr/bin/streamer -q -j 100 -w 3 -s 640x480 -o <filepath>
 ; [L] /usr/bin/gst-launch -q v4l2src num_buffers=1 decimate=70 ! pngenc ! filesink location=<filepath>
 ; [M] /usr/local/bin/imagesnap -q -w 3.00 <filepath>
-camshot=yes
+camshot=
 
 ; A try to fix most of webcam shot errors is to specify the picture
 ; extension to feet with your software/hardware.

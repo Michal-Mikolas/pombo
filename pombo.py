@@ -106,7 +106,7 @@ DEFAULTS = {
     "wifi_access_points": "",
     "traceroute": "",
     "network_trafic": "",
-    "screenshot": True,
+    "screenshot": "yes",
     "camshot": "",
     "camshot_filetype": "",
 }
@@ -258,7 +258,7 @@ class Pombo(object):
         config["wifi_access_points"] = conf.get("Commands", "wifi_access_points")
         config["traceroute"] = conf.get("Commands", "traceroute")
         config["network_trafic"] = conf.get("Commands", "network_trafic")
-        config["screenshot"] = conf.getboolean("Commands", "screenshot")  # type: ignore
+        config["screenshot"] = conf.get("Commands", "screenshot")
         config["camshot"] = conf.get("Commands", "camshot")
         config["camshot_filetype"] = conf.get("Commands", "camshot_filetype")
 
@@ -589,15 +589,19 @@ class Pombo(object):
 
         return ""
 
-    def screenshot(self, filename):
-        # type: (str) -> List[str]
+    def screenshot(self, filename, is_stolen=False):
+        # type: (str, bool) -> List[str]
         """ Takes a screenshot and returns the path to the saved image
             (in TMP). None if could not take the screenshot.
         """
         files = []  # type: List[str]
 
-        if not self.configuration["screenshot"]:
+        if not self.configuration["screenshot"] or self.configuration["screenshot"] == 'no':
             self.log.info("Skipping screenshot.")
+            return files
+
+        if self.configuration["screenshot"] == 'stolen' and not is_stolen:
+            self.log.info("Skipping screenshot, computer not stolen.")
             return files
 
         self.log.info("Taking screenshot")
@@ -639,8 +643,8 @@ class Pombo(object):
             self.log.info(txt, sizeof_fmt(len(filedata)), urlsplit(distant).netloc)
             self.request_url(distant, "post", parameters)
 
-    def snapshot(self, current_ip):
-        # type: (str) -> None
+    def snapshot(self, current_ip, is_stolen=False):
+        # type: (str, bool) -> None
         """ Make a global snapshot of the system (ip, screenshot, webcam...)
             and sends it to the internet.
             If not internet connexion is available, will exit.
@@ -663,10 +667,10 @@ class Pombo(object):
         filestozip = [filepath]
 
         # Take screenshot(s)
-        filestozip.extend(self.screenshot(report_name))
+        filestozip.extend(self.screenshot(report_name, is_stolen))
 
         # Take a webcam snapshot
-        webcam = self.webcamshot(report_name)
+        webcam = self.webcamshot(report_name, is_stolen)
         if webcam:
             filestozip.append(webcam)
 
@@ -810,14 +814,18 @@ Date/time: {7} (local time) {1}
             report = report.replace("\r\n", "\n")
         return report
 
-    def webcamshot(self, filename):
-        # type: (str) -> Union[str, None]
+    def webcamshot(self, filename, is_stolen=False):
+        # type: (str, bool) -> Union[str, None]
         """ Takes a snapshot with the webcam and returns the path to the
             saved image (in TMP). None if could not take the snapshot.
         """
 
-        if not self.configuration["camshot"]:
+        if not self.configuration["camshot"] or self.configuration["camshot"] == 'no':
             self.log.info("Skipping webcamshot.")
+            return None
+
+        if self.configuration["camshot"] == 'stolen' and not is_stolen:
+            self.log.info("Skipping webcamshot, computer not stolen.")
             return None
 
         if sys.platform == "win32":  # pragma: no cover
@@ -911,7 +919,7 @@ Date/time: {7} (local time) {1}
                 report_needed, is_stolen = self.need_report(current_ip)
                 if current_ip and report_needed:
                     start = time.time()
-                    self.snapshot(current_ip)
+                    self.snapshot(current_ip, is_stolen)
                     runtime = time.time() - start
                 if is_stolen:
                     time.sleep(wait_stolen - runtime)
@@ -928,7 +936,7 @@ Date/time: {7} (local time) {1}
             for i in range(1, 4):
                 self.log.info("* Attempt %d/3 *", i)
                 start = time.time()
-                self.snapshot(current_ip)
+                self.snapshot(current_ip, is_stolen)
                 runtime = time.time() - start
                 if i < 3:
                     time.sleep(wait - runtime)
