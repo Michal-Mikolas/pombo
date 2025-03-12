@@ -80,7 +80,7 @@ WINDOWS = sys.platform == "win32"
 CURRENT_OS = {"Linux": "Linux", "Darwin": "Mac", "Windows": "Windows"}[
     platform.system()
 ]
-ENCODING = sys.stdin.encoding or getdefaultlocale()[1] or "utf-8"
+ENCODING = (sys.stdin.encoding if sys.stdin else None) or getdefaultlocale()[1] or "utf-8"
 VC_VERSION = "0.9.5"
 URL = "https://github.com/BoboTiG/pombo"
 UPLINK = "https://raw.github.com/BoboTiG/pombo/master/VERSION"
@@ -554,6 +554,7 @@ class Pombo(object):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 shell=useshell,
+                creationflags=subprocess.CREATE_NO_WINDOW if WINDOWS else 0,  # hides new terminal window on Windows platform @see https://stackoverflow.com/questions/74048217/hide-popen-in-exe-mode
             )
             sout, serr = myprocess.communicate()
             myprocess.wait()
