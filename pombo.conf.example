@@ -23,7 +23,7 @@ server_url=
 ; Must be the same as in pombo.php.
 check_file=.stolen
 
-; Time between each report (in minutes).
+; Time between each check (in minutes).
 ; When stolen, time between each report is this option divided by 3:
 ; if time_limit=15, when stolen it will be 15/3 = 5 min.
 ; On GNU/Linux, think to adapt /etc/cron/pombo.
@@ -40,6 +40,9 @@ email_id=
 ; You could add several IP by using "add" option or use add-ip.bat
 ; on Windows.
 only_on_ip_change=no
+
+; If True, pombo will send report on every check.
+always_report=no
 
 ; Enable informations logging (not recommended, only for debug/dev purpose)
 enable_log=no
