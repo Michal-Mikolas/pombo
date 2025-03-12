@@ -92,6 +92,7 @@ DEFAULTS = {
     "time_limit": 15,
     "email_id": "",
     "only_on_ip_change": False,
+    "always_report": False,
     "enable_log": False,
     "use_proxy": False,
     "use_env": False,
@@ -243,6 +244,7 @@ class Pombo(object):
         config["only_on_ip_change"] = conf.getboolean(  # type: ignore
             "General", "only_on_ip_change"
         )
+        config["always_report"] = conf.getboolean("General", "always_report")  # type: ignore
         config["enable_log"] = conf.getboolean("General", "enable_log")  # type: ignore
         config["use_proxy"] = conf.getboolean("General", "use_proxy")  # type: ignore
         config["use_env"] = conf.getboolean("General", "use_env")  # type: ignore
@@ -438,6 +440,9 @@ class Pombo(object):
         is_stolen = self.stolen()
         if is_stolen:
             return True, True
+
+        if self.configuration["always_report"]:
+            return True, False
 
         if not self.configuration["only_on_ip_change"]:
             self.log.info("Skipping check based on IP change.")
@@ -880,14 +885,16 @@ Date/time: {7} (local time) {1}
 
             self.snapshot(current_ip)
             wait_stolen = self.configuration["time_limit"] // 3
-            if self.configuration["only_on_ip_change"]:
-                complement = "on ip change"
+            if self.configuration["always_report"]:
+                complement = "every {} minutes otherwise".format(self.configuration["time_limit"])
+            elif self.configuration["only_on_ip_change"]:
+                complement = "on ip change otherwise"
             else:
-                complement = "every {} minutes".format(self.configuration["time_limit"])
+                complement = "otherwise no report will be sent"
             self.log.info(
                 (
                     "==> In real scenario, Pombo will send a report"
-                    " every %d minutes if stolen, %s otherwise."
+                    " every %d minutes if stolen, %s."
                 ),
                 wait_stolen,
                 complement,
