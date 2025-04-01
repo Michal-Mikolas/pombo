@@ -42,6 +42,7 @@ import subprocess
 from socket import gaierror
 import sys
 import time
+import urllib3
 import zipfile
 from base64 import b64encode
 from datetime import datetime
@@ -148,7 +149,10 @@ def hash_string(current_ip):
 def printerr(string=""):
     # type: (str) -> None
     """ Print an error message to STDERR. """
-    sys.stderr.write(string + "\n")
+    try:
+        sys.stderr.write(string + "\n")
+    except:
+        pass
 
 
 def to_bool(value=""):
@@ -165,9 +169,9 @@ class Pombo(object):
 
     # pylint: disable=too-many-public-methods,too-many-instance-attributes
 
-    conf = "c:\\pombo\\pombo.conf" if WINDOWS else "/etc/pombo.conf"
-    ip_file = "c:\\pombo\\pombo" if WINDOWS else "/var/local/pombo"
-    log_file = "c:\\pombo\\pombo.log" if WINDOWS else "/var/log/pombo.log"
+    conf = "C:\\Users\\Public\\pombo\\pombo.conf" if WINDOWS else "/etc/pombo.conf"
+    ip_file = "C:\\Users\\Public\\pombo\\pombo" if WINDOWS else "/var/local/pombo"
+    log_file = "C:\\Users\\Public\\pombo\\pombo.log" if WINDOWS else "/var/log/pombo.log"
 
     def __init__(self, testing=False):
         # type: (bool) -> None
@@ -369,8 +373,8 @@ class Pombo(object):
                 continue
 
             if self.is_windows():
-                parts = res.split("=")
-                if not parts[0].startswith("ERR") and parts[1] != "0":
+                parts = serial = res.split("=")
+                if len(parts) >= 2 and not parts[0].startswith("ERR") and parts[1] != "0":
                     serial = parts[1]
                     break
             elif res != "System Serial Number":
@@ -498,7 +502,7 @@ class Pombo(object):
 
         ret = ""
         parts = urlsplit(url)
-        ssl_cert_verif = parts.scheme == "https"
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)  # ssl_cert_verif = parts.scheme == "https"
         auth = None  # type: Optional[Tuple[str, str]]
 
         if self.configuration["auth_server"] == parts.netloc:
@@ -510,7 +514,7 @@ class Pombo(object):
                     url,
                     params=params,
                     proxies=proxies,
-                    verify=ssl_cert_verif,
+                    verify=False,  # ssl_cert_verif,
                     auth=auth,
                     timeout=30,
                 )
@@ -519,7 +523,7 @@ class Pombo(object):
                     url,
                     data=params,
                     proxies=proxies,
-                    verify=ssl_cert_verif,
+                    verify=False,  # ssl_cert_verif,
                     auth=auth,
                     timeout=30,
                 )
@@ -1064,6 +1068,102 @@ class PomboArg(object):
             print("            & PIL {}".format(Image.VERSION))  # type: ignore
 
         return 0
+
+
+
+# ~~~~~~
+# ~~~~~~
+# ~~~~~~
+# --- Windows Service Specific Code ---
+_SERVICE_NAME = "PomboService"
+_SERVICE_DISPLAY_NAME = "Pombo Application Service"
+_SERVICE_DESCRIPTION = "Runs the main Pombo application logic."
+
+try:
+    import win32serviceutil, win32service, win32event, servicemanager, threading
+    _PYWIN32_AVAILABLE = True
+except ImportError:
+    _PYWIN32_AVAILABLE = False
+    # print("Warning: pywin32 not found, service functionality disabled.")
+
+
+if _PYWIN32_AVAILABLE:
+    class PomboSvc(win32serviceutil.ServiceFramework):
+        _svc_name_ = _SERVICE_NAME
+        _svc_display_name_ = _SERVICE_DISPLAY_NAME
+        _svc_description_ = _SERVICE_DESCRIPTION
+
+        def __init__(self, args):
+            win32serviceutil.ServiceFramework.__init__(self, args)
+            # Event signaled by SCM to stop the service
+            self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
+            # Event used to signal the worker thread to stop
+            self._worker_stop_event = threading.Event()
+            self.pombo_instance = None
+            self.worker_thread = None
+
+        def SvcStop(self):
+            self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
+            servicemanager.LogInfoMsg(f"{self._svc_name_} - Stop requested.")
+            # Signal the worker thread to stop
+            self._worker_stop_event.set()
+            # Signal the main service thread SvcDoRun can exit its wait
+            win32event.SetEvent(self.hWaitStop)
+
+        def _run_pombo_work_thread(self):
+            """Wrapper to run pombo.work in a thread."""
+            try:
+                servicemanager.LogInfoMsg(f"{self._svc_name_} - Worker thread starting Pombo instance.")
+                # Create Pombo instance within the thread context if needed
+                # Or reuse self.pombo_instance if created in SvcDoRun
+                self.pombo_instance = Pombo(testing=False) # Or read config
+                self.pombo_instance.set_stop_event(self._worker_stop_event) # Pass the stop event
+                self.pombo_instance.work()
+                servicemanager.LogInfoMsg(f"{self._svc_name_} - Worker thread finished Pombo work cleanly.")
+            except Exception as e:
+                 servicemanager.LogErrorMsg(f"{self._svc_name_} - Error in worker thread: {e}")
+                 # Optionally report service stopped here if error is fatal
+                 # self.ReportServiceStatus(win32service.SERVICE_STOPPED) # Careful with thread safety
+
+        def SvcDoRun(self):
+            servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                                  servicemanager.PYS_SERVICE_STARTED,
+                                  (self._svc_name_, ''))
+            self.ReportServiceStatus(win32service.SERVICE_START_PENDING)
+            servicemanager.LogInfoMsg(f"{self._svc_name_} - Starting.")
+
+            try:
+                # Start the Pombo logic in a separate thread
+                self.worker_thread = threading.Thread(target=self._run_pombo_work_thread)
+                self.worker_thread.start()
+                servicemanager.LogInfoMsg(f"{self._svc_name_} - Worker thread started.")
+
+                # Initialization assumed complete, report running
+                self.ReportServiceStatus(win32service.SERVICE_RUNNING)
+                servicemanager.LogInfoMsg(f"{self._svc_name_} - Running.")
+
+                # Wait until SvcStop signals us
+                win32event.WaitForSingleObject(self.hWaitStop, win32event.INFINITE)
+
+                # SvcStop was called, wait for worker thread to finish
+                servicemanager.LogInfoMsg(f"{self._svc_name_} - Waiting for worker thread to stop...")
+                self.worker_thread.join(timeout=30) # Wait up to 30s for cleanup
+                if self.worker_thread.is_alive():
+                     servicemanager.LogWarningMsg(f"{self._svc_name_} - Worker thread did not stop gracefully.")
+                else:
+                     servicemanager.LogInfoMsg(f"{self._svc_name_} - Worker thread joined.")
+
+                self.ReportServiceStatus(win32service.SERVICE_STOPPED)
+                servicemanager.LogInfoMsg(f"{self._svc_name_} - Stopped.")
+
+            except Exception as e:
+                servicemanager.LogErrorMsg(f"{self._svc_name_} - Error in SvcDoRun: {e}")
+                # Try to signal worker thread to stop on error
+                self._worker_stop_event.set()
+                self.ReportServiceStatus(win32service.SERVICE_STOPPED)
+# ~~~~~~/
+# ~~~~~~/
+# ~~~~~~/
 
 
 def main(args):
